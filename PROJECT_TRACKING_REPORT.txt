@@ -1,0 +1,1274 @@
+================================================================================
+         AI HEALTH SCREENING ASSISTANT — PROJECT TRACKING REPORT
+================================================================================
+
+Generated: 2026-08-18
+Status:    Backend Implementation — In Progress
+Author:    Developer
+Version:   1.0.0
+
+================================================================================
+                          TABLE OF CONTENTS
+================================================================================
+
+1.  Project Overview
+2.  Assessment Requirements Summary
+3.  Technology Stack (Detailed)
+4.  Architecture Overview
+5.  Directory Structure
+6.  Backend Modules — Detailed Breakdown
+7.  Database Design (MongoDB + Mongoose)
+8.  AI Pipeline — Full Flow
+9.  WebSocket Protocol Specification
+10. REST API Specification
+11. Prompt Engineering Details
+12. Error Handling Strategy
+13. Environment Variables
+14. Security Considerations
+15. Testing Strategy
+16. Development Commands
+17. Implementation Progress Tracker
+18. Future Enhancements / Nice-to-Haves
+19. Known Limitations
+20. Submission Checklist
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+Project Name:     AI Health Screening Assistant
+Type:             Web Application (Voice-based AI Health Screening)
+Purpose:          A web app where a user can have a live voice conversation
+                  with an AI agent that conducts a basic health screening call.
+                  Once the call ends, the app shows a structured health report
+                  summarizing what was discussed.
+
+How It Works:
+  - User clicks "Start Call" → AI greets the user
+  - AI asks health screening questions one at a time
+  - User speaks → audio is captured and sent to backend
+  - Backend transcribes speech → sends to LLM → generates audio response
+  - AI asks adaptive follow-up questions based on context
+  - User clicks "End Call" → structured health report is generated
+  - Report displays: name, concern, symptoms, severity, duration, etc.
+
+Current Phase:    Backend Only (React frontend to be built separately later)
+
+================================================================================
+2. ASSESSMENT REQUIREMENTS SUMMARY (FROM PDF)
+================================================================================
+
+MUST-HAVE FUNCTIONALITY:
+  [1] The Call
+      - "Start Call" button begins live voice conversation with AI
+      - "End Call" button ends it
+      - AI greets user, asks basic health-screening questions one at a time
+      - Questions: name, main concern/symptom, duration, severity, related symptoms
+      - Must feel like adaptive conversation, NOT a fixed script
+      - Follow-up questions when answers are vague
+      - Language: Hindi or English (minimum)
+      - Transport: WebRTC, WebSockets, or similar (real-time oriented)
+      - NOT "record whole conversation and upload one audio file at end"
+
+  [2] The Pipeline
+      - Speech-to-Text (STT) → LLM → Text-to-Speech (TTS)
+      - Any APIs allowed (OpenAI/Whisper, Deepgram, ElevenLabs, etc.)
+      - Push-to-talk style flow is ACCEPTABLE and EXPECTED
+      - "user speaks their turn → sent for processing → AI responds → back to user"
+      - Turn-taking and conversation state must be handled correctly
+      - AI must remember what's already been asked and answered
+
+  [3] The Report
+      - Generated after call ends
+      - Structured health report (not raw transcript dump)
+      - Contains: main concern, key symptoms, duration, severity, follow-up items
+      - Should read like something a doctor could glance at
+      - Handle short/incomplete calls gracefully (no crash, no garbage)
+
+NICE-TO-HAVE (OPTIONAL):
+  - Auto language detection/switching
+  - Barge-in handling (user speaks while AI is talking)
+  - Graceful handling of silence, background noise, empty STT results
+
+EVALUATION CRITERIA:
+  - Does the call actually work (main thing)
+  - Pipeline architecture (STT → LLM → TTS flow, real-time transport)
+  - Conversation state management (context tracking across turns)
+  - Failure handling (silence, unclear audio, API failures)
+  - Report quality (synthesizes conversation into structured output)
+
+================================================================================
+3. TECHNOLOGY STACK (DETAILED)
+================================================================================
+
+RUNTIME & LANGUAGE:
+  - Node.js (v18+)         — JavaScript runtime
+  - TypeScript (v5.x)      — Type-safe JavaScript, strict mode enabled
+  - ts-node / tsx           — Run TypeScript directly in development
+
+WEB FRAMEWORK:
+  - Express.js (v4.x)      — HTTP server, REST API routing, middleware
+
+REAL-TIME COMMUNICATION:
+  - ws (v8.x)              — WebSocket library for Node.js
+                              Used for real-time voice conversation transport
+                              Push-to-talk flow: client sends audio chunks,
+                              server responds with AI audio
+
+DATABASE:
+  - MongoDB                 — NoSQL document database
+  - Mongoose (v8.x)        — MongoDB ODM (Object Document Mapper)
+                              Schema definitions, validation, queries
+
+AI / ML APIs (OpenAI SDK + Groq):
+  - openai (v4.x)          — Official OpenAI Node.js SDK (used for OpenAI & Groq endpoints)
+
+  Speech-to-Text (STT):
+    - OpenAI Whisper API    — Transcribes user audio using model: whisper-1
+    - Groq STT API          — Alternative high-performance STT using model: whisper-large-v3
+    - Supports: mp3, mp4, mpeg, mpga, m4a, wav, webm
+    - Used for: Converting user speech to text each turn
+
+  Large Language Model (LLM):
+    - OpenAI GPT-4o-mini    — Drives the conversation
+    - Structured JSON output — Returns reply + extracted health data
+    - Used for: Generating AI responses, extracting health info,
+                tracking conversation state, generating reports
+
+  Text-to-Speech (TTS):
+    - OpenAI TTS-1          — Converts AI text response to speech audio
+    - Voice: alloy (configurable)
+    - Output: mp3 audio buffer
+    - Used for: Making AI responses audible to user
+
+VALIDATION:
+  - express-validator       — Request body/params validation for REST APIs
+
+LOGGING:
+  - winston (v3.x)         — Structured logging with levels and transports
+                              Console transport in development
+                              Levels: error, warn, info, debug
+
+UTILITIES:
+  - uuid (v9.x)            — Generate unique identifiers
+  - dotenv (v16.x)         — Load environment variables from .env file
+  - cors (v2.x)            — Cross-Origin Resource Sharing middleware
+                              Needed for React frontend on different port
+
+DEV DEPENDENCIES:
+  - typescript              — TypeScript compiler
+  - ts-node                 — TypeScript execution for Node.js
+  - tsx                     — Fast TypeScript executor (alternative to ts-node)
+  - nodemon                 — Auto-restart server on file changes
+  - @types/express          — TypeScript types for Express
+  - @types/ws               — TypeScript types for ws
+  - @types/node             — TypeScript types for Node.js
+  - @types/cors             — TypeScript types for cors
+  - @types/uuid             — TypeScript types for uuid
+
+WHY THESE CHOICES:
+  - Express.js: Industry standard, simple, well-documented
+  - ws: Lightweight, fast, native WebSocket (no Socket.IO overhead)
+  - MongoDB/Mongoose: Flexible schema for varied health data, easy embedded docs
+  - OpenAI: Single provider for STT+LLM+TTS reduces complexity
+  - Winston: Production-grade logging with structured output
+  - TypeScript strict: Catches bugs at compile time, better code quality
+
+================================================================================
+4. ARCHITECTURE OVERVIEW
+================================================================================
+
+HIGH-LEVEL ARCHITECTURE:
+
+  ┌─────────────────────────────────────────────────────┐
+  │                   React Frontend                     │
+  │              (to be built separately)                │
+  └─────────┬──────────────────────────┬────────────────┘
+            │ REST API (HTTP)          │ WebSocket (WS)
+            │                          │
+  ┌─────────▼──────────────────────────▼────────────────┐
+  │                   Express Server                     │
+  │                                                      │
+  │  ┌──────────────┐    ┌───────────────────────────┐  │
+  │  │  REST Routes  │    │   WebSocket Handler       │  │
+  │  │  /api/calls   │    │   /ws/call/:callId        │  │
+  │  │  /api/reports │    │                           │  │
+  │  └──────┬───────┘    └──────────┬────────────────┘  │
+  │         │                       │                    │
+  │  ┌──────▼───────────────────────▼────────────────┐  │
+  │  │              Service Layer                     │  │
+  │  │                                                │  │
+  │  │  call.service    conversation.service           │  │
+  │  │  report.service  pipeline.service               │  │
+  │  │                                                │  │
+  │  │  ┌─────────────────────────────────────────┐   │  │
+  │  │  │          AI Services (Abstracted)        │   │  │
+  │  │  │  stt.service  llm.service  tts.service   │   │  │
+  │  │  └─────────────────────────────────────────┘   │  │
+  │  └──────────────────────┬────────────────────────┘  │
+  │                         │                            │
+  │  ┌──────────────────────▼────────────────────────┐  │
+  │  │              MongoDB (Mongoose)                │  │
+  │  │  Call  │  Message  │  HealthReport              │  │
+  │  └───────────────────────────────────────────────┘  │
+  └─────────────────────────────────────────────────────┘
+
+DESIGN PATTERNS USED:
+  - Service Layer Pattern   — Business logic separated from controllers
+  - Strategy Pattern        — AI providers (STT/LLM/TTS) are interchangeable
+  - Factory Pattern         — Provider creation based on environment config
+  - Repository Pattern      — Mongoose models abstract database access
+  - Middleware Pattern      — Express middleware for errors, validation, CORS
+  - Observer Pattern        — WebSocket events for real-time communication
+
+================================================================================
+5. DIRECTORY STRUCTURE
+================================================================================
+
+server/
+├── src/
+│   ├── config/
+│   │   ├── env.ts                  — Environment variable loading & validation
+│   │   └── database.ts             — MongoDB connection setup with retry logic
+│   │
+│   ├── controllers/
+│   │   ├── call.controller.ts      — REST handlers for call CRUD operations
+│   │   └── report.controller.ts    — REST handler for health report retrieval
+│   │
+│   ├── routes/
+│   │   ├── call.routes.ts          — Express router for /api/calls endpoints
+│   │   └── report.routes.ts        — Express router for /api/calls/:id/report
+│   │
+│   ├── models/
+│   │   ├── Call.ts                 — Mongoose schema/model for Call documents
+│   │   ├── Message.ts             — Mongoose schema/model for Message documents
+│   │   └── HealthReport.ts        — Mongoose schema/model for HealthReport docs
+│   │
+│   ├── services/
+│   │   ├── call.service.ts         — Call lifecycle management
+│   │   ├── conversation.service.ts — Conversation state & context management
+│   │   ├── report.service.ts       — Health report generation service
+│   │   └── ai/
+│   │       ├── stt.service.ts      — Speech-to-Text interface + implementations
+│   │       ├── llm.service.ts      — LLM interface + implementations
+│   │       ├── tts.service.ts      — Text-to-Speech interface + implementations
+│   │       └── pipeline.service.ts — Full AI pipeline orchestration
+│   │
+│   ├── websocket/
+│   │   ├── call.socket.ts          — WebSocket connection handler for calls
+│   │   └── socket.types.ts         — TypeScript types for WS message protocol
+│   │
+│   ├── prompts/
+│   │   ├── conversation.prompt.ts  — System prompt for health screening AI
+│   │   └── report.prompt.ts        — System prompt for report generation
+│   │
+│   ├── middleware/
+│   │   ├── error.middleware.ts     — Global error handling middleware
+│   │   └── validation.middleware.ts — Request validation middleware
+│   │
+│   ├── utils/
+│   │   └── logger.ts              — Winston logger configuration
+│   │
+│   ├── app.ts                     — Express app setup (middleware, routes)
+│   └── server.ts                  — HTTP server + WebSocket server + startup
+│
+├── package.json                   — Dependencies and scripts
+├── tsconfig.json                  — TypeScript compiler configuration
+├── .env.example                   — Template for environment variables
+└── .gitignore                     — Git ignore rules
+
+Total Files: ~25 source files
+Lines of Code: ~2000-2500 estimated
+
+================================================================================
+6. BACKEND MODULES — DETAILED BREAKDOWN
+================================================================================
+
+─────────────────────────────────────────────
+MODULE 1: Configuration (config/)
+─────────────────────────────────────────────
+
+  env.ts:
+    What it does:
+      - Loads environment variables from .env file using dotenv
+      - Validates that required variables are present
+      - Exports a typed config object
+      - Provides defaults for optional variables
+    
+    Key exports:
+      - env.PORT (default: 3001)
+      - env.MONGODB_URI (default: mongodb://localhost:27017/health-screening)
+      - env.OPENAI_API_KEY (required for OpenAI providers)
+      - env.GROQ_API_KEY (required for Groq STT provider)
+      - env.STT_PROVIDER (default: 'openai', options: 'openai' | 'groq' | 'mock')
+      - env.LLM_PROVIDER (default: 'openai', options: 'openai' | 'mock')
+      - env.TTS_PROVIDER (default: 'openai', options: 'openai' | 'mock')
+      - env.LLM_MODEL (default: 'gpt-4o-mini')
+      - env.TTS_MODEL (default: 'tts-1')
+      - env.TTS_VOICE (default: 'alloy')
+      - env.NODE_ENV (default: 'development')
+      - env.LOG_LEVEL (default: 'info')
+      - env.CORS_ORIGIN (default: 'http://localhost:3000')
+
+  database.ts:
+    What it does:
+      - Connects to MongoDB using Mongoose
+      - Implements connection retry logic
+      - Logs connection success/failure
+      - Handles disconnect events
+    
+    Why MongoDB:
+      - Flexible schema for varied health data
+      - Easy to store nested/embedded documents
+      - JSON-native (matches our data flow)
+      - Good for rapid prototyping
+
+─────────────────────────────────────────────
+MODULE 2: Models (models/)
+─────────────────────────────────────────────
+
+  Call.ts — Represents a screening call/session
+    Fields:
+      - _id                    ObjectId (auto)
+      - status                 String enum: 'created' | 'active' | 'completed' | 'failed'
+      - language               String (default: 'en')
+      - startedAt              Date (when call became active)
+      - endedAt                Date (when call ended)
+      - collectedData          Embedded object:
+          - patientName        String
+          - mainConcern        String
+          - duration           String (how long symptoms last)
+          - severity           String
+          - relatedSymptoms    [String] array
+          - additionalNotes    String
+      - metadata               Object:
+          - totalTurns         Number
+          - endReason          String ('completed' | 'user_ended' | 'error' | 'timeout')
+      - createdAt              Date (auto via timestamps)
+      - updatedAt              Date (auto via timestamps)
+
+  Message.ts — Individual conversation messages
+    Fields:
+      - _id                    ObjectId (auto)
+      - callId                 ObjectId (ref → Call)
+      - role                   String enum: 'user' | 'assistant' | 'system'
+      - text                   String (message content)
+      - sequence               Number (order in conversation, 0-indexed)
+      - timestamp              Date (when message occurred)
+    
+    Indexes:
+      - { callId: 1, sequence: 1 } — fast retrieval of conversation history
+
+  HealthReport.ts — Generated health screening report
+    Fields:
+      - _id                    ObjectId (auto)
+      - callId                 ObjectId (ref → Call, unique)
+      - patientName            String
+      - mainConcern            String
+      - symptoms               [String] array
+      - duration               String
+      - severity               String
+      - relatedSymptoms        [String] array
+      - followUpPoints         [String] array (AI-flagged follow-up items)
+      - completeness           String enum: 'complete' | 'partial' | 'minimal'
+      - summary                String (narrative summary)
+      - disclaimer             String (screening disclaimer)
+      - generatedAt            Date
+
+─────────────────────────────────────────────
+MODULE 3: AI Services (services/ai/)
+─────────────────────────────────────────────
+
+  stt.service.ts — Speech-to-Text
+    Interface: STTService
+      transcribe(audio: Buffer, mimeType?: string): Promise<string>
+    
+    Implementations:
+      [1] OpenAIWhisperSTTService
+          - Uses OpenAI Whisper API (whisper-1 model)
+          - Accepts audio buffer, converts to file for API
+          - Returns transcribed text string
+          - Handles empty/unclear audio gracefully
+      
+      [2] GroqSTTService
+          - Uses Groq STT API (whisper-large-v3 model)
+          - Direct HTTP/REST call via OpenAI compatible baseURL
+          - Returns transcribed text string
+          - High performance and cost-effective
+      
+      [3] MockSTTService
+          - Returns predefined transcription text
+          - Cycles through sample responses for testing
+          - No API key needed
+    
+    Factory: createSTTService(provider: string)
+      - Returns appropriate implementation based on env config ('openai' | 'groq' | 'mock')
+
+  llm.service.ts — Large Language Model
+    Interface: LLMService
+      chat(params: LLMChatParams): Promise<LLMResponse>
+    
+    LLMChatParams:
+      - systemPrompt: string
+      - messages: { role: string, content: string }[]
+      - responseFormat?: 'json' | 'text'
+    
+    LLMResponse:
+      - reply: string          (AI's spoken response)
+      - collectedData: object  (extracted health information)
+      - nextField: string      (what to ask next)
+      - conversationComplete: boolean
+    
+    Implementations:
+      [1] OpenAILLMService
+          - Uses GPT-4o-mini with JSON response format
+          - System prompt instructs structured output
+          - Handles malformed JSON responses gracefully
+          - Falls back to text-only response if parsing fails
+      
+      [2] MockLLMService
+          - Returns scripted responses based on turn count
+          - Simulates conversation progression
+          - Returns mock collected data
+
+    Factory: createLLMService(provider: string)
+
+  tts.service.ts — Text-to-Speech
+    Interface: TTSService
+      synthesize(text: string): Promise<Buffer>
+    
+    Implementations:
+      [1] OpenAITTSService
+          - Uses OpenAI TTS-1 model
+          - Voice: alloy (configurable via env)
+          - Returns mp3 audio buffer
+      
+      [2] MockTTSService
+          - Returns a small silent audio buffer
+          - No API key needed
+
+    Factory: createTTSService(provider: string)
+
+  pipeline.service.ts — AI Pipeline Orchestration
+    What it does:
+      - Coordinates the entire audio-in → audio-out flow
+      - Steps:
+        1. Receive audio buffer from WebSocket
+        2. Call STT service → get transcript text
+        3. If transcript empty/unclear → return error message
+        4. Load conversation history from DB
+        5. Build LLM context (system prompt + history + collected data)
+        6. Call LLM service → get response + extracted data
+        7. Update call's collected data in DB
+        8. Save user message + AI message to DB
+        9. Call TTS service → get audio buffer
+        10. Return: { transcript, aiText, aiAudio, collectedData }
+      
+      - Error handling at each step
+      - If STT fails → tell user to repeat
+      - If LLM fails → apologize and ask to repeat
+      - If TTS fails → return text-only response
+
+    Why separate from WebSocket:
+      - Testable independently
+      - Can be reused for other transports (REST, etc.)
+      - Clear separation of concerns
+      - Easier to debug each step
+
+─────────────────────────────────────────────
+MODULE 4: Business Services (services/)
+─────────────────────────────────────────────
+
+  call.service.ts — Call Lifecycle Management
+    Functions:
+      - createCall(language?: string): Promise<Call>
+          Creates new call with status 'created'
+      
+      - getCall(callId: string): Promise<Call>
+          Retrieves call by ID, validates existence
+      
+      - startCall(callId: string): Promise<Call>
+          Transitions status: created → active
+          Sets startedAt timestamp
+      
+      - endCall(callId: string, reason?: string): Promise<Call>
+          Transitions status: active → completed
+          Sets endedAt timestamp
+          Triggers report generation
+      
+      - failCall(callId: string, reason?: string): Promise<Call>
+          Transitions status: any → failed
+          Used for error scenarios
+
+  conversation.service.ts — Conversation State Management
+    Functions:
+      - getConversationHistory(callId: string): Promise<Message[]>
+          Retrieves all messages for a call, ordered by sequence
+      
+      - addMessage(callId: string, role, text): Promise<Message>
+          Adds new message with auto-incremented sequence
+      
+      - getCollectedData(callId: string): Promise<CollectedData>
+          Returns current collected health info from Call document
+      
+      - updateCollectedData(callId, newData): Promise<void>
+          Merges new extracted data into call's collectedData
+          Only updates fields that have new values (non-destructive)
+      
+      - buildSystemPrompt(collectedData): string
+          Constructs the system prompt with current state
+          Includes what's been collected and what's missing
+      
+      - getGreeting(): string
+          Returns the AI's initial greeting message
+
+  report.service.ts — Health Report Generation
+    Functions:
+      - generateReport(callId: string): Promise<HealthReport>
+          Steps:
+            1. Load call document
+            2. Load full conversation history
+            3. Build report generation prompt
+            4. Send to LLM with conversation transcript
+            5. Parse structured report from LLM response
+            6. Determine completeness (complete/partial/minimal)
+            7. Add disclaimer
+            8. Save to MongoDB
+            9. Return report
+      
+      - getReport(callId: string): Promise<HealthReport>
+          Retrieves existing report for a call
+      
+      Completeness rules:
+        - "complete": all key fields collected (name, concern, duration, severity)
+        - "partial": some fields collected but not all
+        - "minimal": very few fields (early termination)
+
+─────────────────────────────────────────────
+MODULE 5: WebSocket Layer (websocket/)
+─────────────────────────────────────────────
+
+  socket.types.ts — Message Type Definitions
+    Client → Server messages:
+      - AudioStartMessage    { type: 'audio.start' }
+      - AudioChunkMessage    { type: 'audio.chunk', data: string (base64) }
+      - AudioEndMessage      { type: 'audio.end' }
+      - CallEndMessage       { type: 'call.end' }
+    
+    Server → Client messages:
+      - AIGreetingMessage    { type: 'ai.greeting', text: string, audio: string }
+      - AIProcessingMessage  { type: 'ai.processing' }
+      - TranscriptMessage    { type: 'transcript', role: string, text: string }
+      - AIResponseMessage    { type: 'ai.response', text: string, audio: string }
+      - CallEndedMessage     { type: 'call.ended', reportAvailable: boolean }
+      - ErrorMessage         { type: 'error', message: string }
+
+  call.socket.ts — WebSocket Connection Handler
+    What it does:
+      1. Client connects to /ws/call/:callId
+      2. Validates callId exists in database
+      3. Transitions call status to 'active' if 'created'
+      4. Sends AI greeting (text + audio)
+      5. Listens for client messages:
+         - audio.start → initialize audio buffer
+         - audio.chunk → accumulate audio data
+         - audio.end   → send buffer to pipeline, return response
+         - call.end    → end call, generate report
+      6. Handles disconnection → auto-end call if active
+      7. Handles invalid messages → send error response
+      8. Handles pipeline errors → send user-friendly error
+
+─────────────────────────────────────────────
+MODULE 6: REST API (controllers/ + routes/)
+─────────────────────────────────────────────
+
+  call.controller.ts:
+    POST /api/calls
+      - Creates a new call session
+      - Body: { language?: string } (optional, defaults to 'en')
+      - Returns: 201 { call: { id, status, language, createdAt } }
+    
+    GET /api/calls/:callId
+      - Gets call details
+      - Validates callId format (MongoDB ObjectId)
+      - Returns: 200 { call: { id, status, language, collectedData, ... } }
+      - Error: 404 if not found, 400 if invalid ID format
+    
+    POST /api/calls/:callId/end
+      - Ends an active call
+      - Triggers report generation
+      - Returns: 200 { call: { id, status: 'completed', ... } }
+      - Error: 404 if not found, 400 if call not active
+
+  report.controller.ts:
+    GET /api/calls/:callId/report
+      - Gets health report for a completed call
+      - Returns: 200 { report: { ... } }
+      - Error: 404 if report not found
+      - Error: 400 if call not completed
+
+─────────────────────────────────────────────
+MODULE 7: Prompts (prompts/)
+─────────────────────────────────────────────
+
+  conversation.prompt.ts:
+    System prompt instructs the AI to:
+      - Act as a health screening assistant (NOT a doctor)
+      - Ask ONE question at a time
+      - Remember all previously collected information
+      - Never repeat questions already answered
+      - Ask adaptive follow-up questions based on responses
+      - Be empathetic and professional
+      - Respond in the same language the user speaks
+      - Output structured JSON with:
+          reply: the spoken response
+          collectedData: any new health info extracted
+          nextField: what to ask next
+          conversationComplete: whether screening is done
+      - Required fields to collect:
+          patientName, mainConcern, duration, severity, relatedSymptoms
+      - Do NOT diagnose or prescribe
+      - Handle vague answers by asking clarifying follow-ups
+
+  report.prompt.ts:
+    System prompt instructs the AI to:
+      - Generate a structured health screening summary
+      - Synthesize conversation into clinical-style summary
+      - Include: patient name, main concern, symptoms list, duration,
+        severity, related symptoms, follow-up recommendations
+      - Handle incomplete data gracefully
+      - Add disclaimer that this is a screening, not a diagnosis
+      - Output structured JSON matching HealthReport schema
+      - Mark completeness level based on data collected
+
+─────────────────────────────────────────────
+MODULE 8: Middleware (middleware/)
+─────────────────────────────────────────────
+
+  error.middleware.ts:
+    - Global Express error handler
+    - Catches all unhandled errors
+    - In development: returns error message + stack trace
+    - In production: returns generic user-friendly message
+    - Logs full error details server-side via Winston
+    - Never exposes API keys or internal paths to client
+    - Handles Mongoose validation errors specially
+    - Handles known error types (CastError, ValidationError)
+
+  validation.middleware.ts:
+    - Uses express-validator for request validation
+    - Validates:
+      - callId parameter format (valid MongoDB ObjectId)
+      - Request body fields (language enum, etc.)
+    - Returns 400 with validation error details
+
+─────────────────────────────────────────────
+MODULE 9: Utilities (utils/)
+─────────────────────────────────────────────
+
+  logger.ts:
+    - Winston logger instance
+    - Transports: Console
+    - Format: timestamp + level + message
+    - Colors in development
+    - JSON format in production
+    - Log levels: error, warn, info, http, debug
+
+─────────────────────────────────────────────
+MODULE 10: App Entry Points
+─────────────────────────────────────────────
+
+  app.ts:
+    - Creates Express application
+    - Attaches middleware: cors, json parser, url-encoded parser
+    - Mounts routes: /api/calls, /api/calls/:callId/report
+    - Attaches error handling middleware (last)
+    - Exports app instance
+
+  server.ts:
+    - Creates HTTP server from Express app
+    - Creates WebSocket server (ws) attached to HTTP server
+    - Routes WebSocket connections to call.socket handler
+    - Connects to MongoDB
+    - Starts listening on configured PORT
+    - Implements graceful shutdown (SIGTERM, SIGINT)
+    - Logs startup information
+
+================================================================================
+7. DATABASE DESIGN (MongoDB + Mongoose)
+================================================================================
+
+COLLECTION: calls
+  Purpose: Track each screening call session
+  ┌────────────────┬──────────────┬─────────────────────────────────┐
+  │ Field          │ Type         │ Description                     │
+  ├────────────────┼──────────────┼─────────────────────────────────┤
+  │ _id            │ ObjectId     │ Auto-generated unique ID        │
+  │ status         │ String       │ created|active|completed|failed │
+  │ language       │ String       │ 'en' or 'hi' (default: 'en')   │
+  │ startedAt      │ Date         │ When call became active         │
+  │ endedAt        │ Date         │ When call ended                 │
+  │ collectedData  │ Object       │ Embedded health info (below)    │
+  │ metadata       │ Object       │ Call metadata (below)           │
+  │ createdAt      │ Date         │ Document creation (auto)        │
+  │ updatedAt      │ Date         │ Last update (auto)              │
+  └────────────────┴──────────────┴─────────────────────────────────┘
+  
+  collectedData sub-document:
+  ┌──────────────────┬──────────────┬────────────────────────────────┐
+  │ patientName      │ String       │ Patient's name                 │
+  │ mainConcern      │ String       │ Primary health concern         │
+  │ duration         │ String       │ How long symptoms last         │
+  │ severity         │ String       │ Severity level                 │
+  │ relatedSymptoms  │ [String]     │ Additional symptoms            │
+  │ additionalNotes  │ String       │ Any extra info                 │
+  └──────────────────┴──────────────┴────────────────────────────────┘
+  
+  metadata sub-document:
+  ┌──────────────────┬──────────────┬────────────────────────────────┐
+  │ totalTurns       │ Number       │ Total conversation turns       │
+  │ endReason        │ String       │ completed|user_ended|error     │
+  └──────────────────┴──────────────┴────────────────────────────────┘
+
+COLLECTION: messages
+  Purpose: Store individual conversation messages
+  ┌────────────────┬──────────────┬─────────────────────────────────┐
+  │ Field          │ Type         │ Description                     │
+  ├────────────────┼──────────────┼─────────────────────────────────┤
+  │ _id            │ ObjectId     │ Auto-generated unique ID        │
+  │ callId         │ ObjectId     │ Reference to calls collection   │
+  │ role           │ String       │ 'user' | 'assistant' | 'system' │
+  │ text           │ String       │ Message content                 │
+  │ sequence       │ Number       │ Order in conversation (0,1,2..) │
+  │ timestamp      │ Date         │ When message was created        │
+  └────────────────┴──────────────┴─────────────────────────────────┘
+  Index: { callId: 1, sequence: 1 }
+
+COLLECTION: healthreports
+  Purpose: Store generated health screening reports
+  ┌────────────────────┬──────────────┬──────────────────────────────┐
+  │ Field              │ Type         │ Description                  │
+  ├────────────────────┼──────────────┼──────────────────────────────┤
+  │ _id                │ ObjectId     │ Auto-generated unique ID     │
+  │ callId             │ ObjectId     │ Reference to calls (unique)  │
+  │ patientName        │ String       │ Patient name                 │
+  │ mainConcern        │ String       │ Primary health concern       │
+  │ symptoms           │ [String]     │ All symptoms mentioned       │
+  │ duration           │ String       │ Duration of symptoms         │
+  │ severity           │ String       │ Severity assessment          │
+  │ relatedSymptoms    │ [String]     │ Related/secondary symptoms   │
+  │ followUpPoints     │ [String]     │ Recommended follow-ups       │
+  │ completeness       │ String       │ complete|partial|minimal     │
+  │ summary            │ String       │ Narrative report summary     │
+  │ disclaimer         │ String       │ Medical disclaimer text      │
+  │ generatedAt        │ Date         │ When report was generated    │
+  └────────────────────┴──────────────┴──────────────────────────────┘
+  Index: { callId: 1 } (unique)
+
+================================================================================
+8. AI PIPELINE — FULL FLOW
+================================================================================
+
+PIPELINE STEPS (for each user turn):
+
+  Step 1: RECEIVE AUDIO
+    ├── Source: WebSocket audio.end message
+    ├── Format: Accumulated audio buffer from audio.chunk messages
+    ├── Input: Raw audio bytes (base64 decoded)
+    └── Output: Audio Buffer
+
+  Step 2: SPEECH-TO-TEXT (STT)
+    ├── Service: STTService.transcribe()
+    ├── Provider: OpenAI Whisper API (or Mock)
+    ├── Input: Audio Buffer + mime type
+    ├── Output: Transcribed text string
+    ├── Error handling:
+    │   ├── Empty result → "I couldn't understand that, please repeat"
+    │   ├── API failure → graceful error message to user
+    │   └── Timeout → retry or error message
+    └── Side effect: Send transcript message to client
+
+  Step 3: LOAD CONTEXT
+    ├── Service: ConversationService
+    ├── Load: Conversation history (all messages for this call)
+    ├── Load: Collected data (from Call document)
+    ├── Build: System prompt with current state
+    └── Output: Full message array for LLM
+
+  Step 4: LLM PROCESSING
+    ├── Service: LLMService.chat()
+    ├── Provider: OpenAI GPT-4o-mini (or Mock)
+    ├── Input: System prompt + conversation history + user transcript
+    ├── Output format (JSON):
+    │   {
+    │     "reply": "How long have you had the headache?",
+    │     "collectedData": { "mainConcern": "headache" },
+    │     "nextField": "duration",
+    │     "conversationComplete": false
+    │   }
+    ├── Error handling:
+    │   ├── Malformed JSON → extract reply text, skip data update
+    │   ├── API failure → apologize, ask user to repeat
+    │   └── Timeout → retry or error message
+    └── Output: AI reply text + extracted data
+
+  Step 5: STATE UPDATE
+    ├── Service: ConversationService.updateCollectedData()
+    ├── Merge new collectedData into Call document
+    ├── Save user message to Messages collection
+    ├── Save AI message to Messages collection
+    └── Update turn counter in Call metadata
+
+  Step 6: TEXT-TO-SPEECH (TTS)
+    ├── Service: TTSService.synthesize()
+    ├── Provider: OpenAI TTS-1 (or Mock)
+    ├── Input: AI reply text
+    ├── Output: MP3 audio buffer
+    ├── Error handling:
+    │   └── API failure → return text-only response (no audio)
+    └── Output: Audio Buffer
+
+  Step 7: RESPOND TO CLIENT
+    ├── Transport: WebSocket
+    ├── Send: ai.response message with text + base64 audio
+    └── Client plays audio and displays text
+
+CALL END FLOW:
+
+  Step 1: Client sends call.end (or disconnects)
+  Step 2: Call status → 'completed'
+  Step 3: Load full conversation history
+  Step 4: Send to LLM with report generation prompt
+  Step 5: Parse structured report
+  Step 6: Save HealthReport to MongoDB
+  Step 7: Send call.ended confirmation to client (if still connected)
+  Step 8: Report available via GET /api/calls/:callId/report
+
+================================================================================
+9. WEBSOCKET PROTOCOL SPECIFICATION
+================================================================================
+
+ENDPOINT: ws://localhost:3001/ws/call/:callId
+
+CONNECTION FLOW:
+  1. Client creates call via POST /api/calls → gets callId
+  2. Client connects to ws://localhost:3001/ws/call/{callId}
+  3. Server validates callId
+  4. Server sends ai.greeting message
+  5. Client and server exchange messages (see below)
+  6. Client sends call.end OR disconnects
+  7. Server generates report and sends call.ended
+
+─── CLIENT → SERVER MESSAGES ───
+
+  Start Audio Recording:
+    { "type": "audio.start" }
+    Purpose: Signal that user is about to start speaking
+    When: User presses "record" / "push-to-talk" button
+
+  Audio Data Chunk:
+    { "type": "audio.chunk", "data": "<base64-encoded-audio>" }
+    Purpose: Send a chunk of recorded audio
+    When: During recording, sent periodically
+    Note: data is base64-encoded audio bytes
+
+  End Audio Recording:
+    { "type": "audio.end" }
+    Purpose: Signal end of user speech, triggers AI pipeline
+    When: User releases "record" button
+
+  End Call:
+    { "type": "call.end" }
+    Purpose: End the screening call
+    When: User clicks "End Call" button
+
+─── SERVER → CLIENT MESSAGES ───
+
+  AI Greeting:
+    { 
+      "type": "ai.greeting", 
+      "text": "Hello! I'm your health screening assistant...", 
+      "audio": "<base64-mp3>" 
+    }
+    When: Immediately after WebSocket connection established
+
+  Processing Indicator:
+    { "type": "ai.processing" }
+    When: After audio.end received, before response ready
+    Purpose: Client can show "AI is thinking..." indicator
+
+  User Transcript:
+    { 
+      "type": "transcript", 
+      "role": "user", 
+      "text": "I have a headache" 
+    }
+    When: After STT completes, before LLM processing
+    Purpose: Show user what was understood from their speech
+
+  AI Response:
+    { 
+      "type": "ai.response", 
+      "text": "How long have you had the headache?", 
+      "audio": "<base64-mp3>" 
+    }
+    When: After full pipeline completes
+    Purpose: AI's spoken response with audio
+
+  Call Ended:
+    { 
+      "type": "call.ended", 
+      "reportAvailable": true 
+    }
+    When: After call.end processed and report generated
+    Purpose: Confirm call is over, report ready for retrieval
+
+  Error:
+    { 
+      "type": "error", 
+      "message": "I couldn't understand that. Could you please repeat?" 
+    }
+    When: Any error during processing
+    Purpose: User-friendly error, never expose internals
+
+================================================================================
+10. REST API SPECIFICATION
+================================================================================
+
+BASE URL: http://localhost:3001/api
+
+─── POST /api/calls ───
+  Purpose:  Create a new screening call session
+  Body:     { "language": "en" }  (optional, defaults to "en")
+  Response: 201 Created
+    {
+      "success": true,
+      "call": {
+        "id": "64f1a2b3c4d5e6f7g8h9i0j1",
+        "status": "created",
+        "language": "en",
+        "createdAt": "2026-08-18T12:00:00.000Z"
+      }
+    }
+  Errors:
+    400 — Invalid language value
+    500 — Server/database error
+
+─── GET /api/calls/:callId ───
+  Purpose:  Get details of a specific call
+  Params:   callId — MongoDB ObjectId string
+  Response: 200 OK
+    {
+      "success": true,
+      "call": {
+        "id": "64f1a2b3c4d5e6f7g8h9i0j1",
+        "status": "active",
+        "language": "en",
+        "startedAt": "2026-08-18T12:00:05.000Z",
+        "collectedData": {
+          "patientName": "John",
+          "mainConcern": "headache"
+        },
+        "metadata": { "totalTurns": 3 }
+      }
+    }
+  Errors:
+    400 — Invalid callId format
+    404 — Call not found
+    500 — Server error
+
+─── POST /api/calls/:callId/end ───
+  Purpose:  End an active call and trigger report generation
+  Params:   callId — MongoDB ObjectId string
+  Response: 200 OK
+    {
+      "success": true,
+      "call": { "id": "...", "status": "completed", ... },
+      "reportAvailable": true
+    }
+  Errors:
+    400 — Call not in active/created state
+    404 — Call not found
+    500 — Server error
+
+─── GET /api/calls/:callId/report ───
+  Purpose:  Get the generated health report for a completed call
+  Params:   callId — MongoDB ObjectId string
+  Response: 200 OK
+    {
+      "success": true,
+      "report": {
+        "callId": "64f1a2b3c4d5e6f7g8h9i0j1",
+        "patientName": "John Doe",
+        "mainConcern": "Persistent headache",
+        "symptoms": ["headache", "dizziness"],
+        "duration": "3 days",
+        "severity": "moderate",
+        "relatedSymptoms": ["sensitivity to light"],
+        "followUpPoints": [
+          "Consider consulting a neurologist",
+          "Monitor if symptoms worsen"
+        ],
+        "completeness": "complete",
+        "summary": "Patient John Doe reports a persistent headache...",
+        "disclaimer": "This is a screening summary only...",
+        "generatedAt": "2026-08-18T12:15:00.000Z"
+      }
+    }
+  Errors:
+    400 — Call not completed yet
+    404 — Report not found
+    500 — Server error
+
+================================================================================
+11. PROMPT ENGINEERING DETAILS
+================================================================================
+
+CONVERSATION SYSTEM PROMPT (conversation.prompt.ts):
+  Role: Health screening assistant
+  
+  Key instructions:
+    - "You are a professional health screening assistant"
+    - "You are NOT a doctor and cannot diagnose conditions"
+    - "Ask exactly ONE question at a time"
+    - "Remember everything the patient has already told you"
+    - "NEVER repeat a question that has already been answered"
+    - "Ask adaptive follow-up questions based on the patient's responses"
+    - "If a response is vague, ask a clarifying follow-up"
+    - "Respond in the same language the patient uses"
+    
+  Required fields to collect:
+    - Patient name
+    - Main health concern / symptom
+    - Duration (how long the symptom has been present)
+    - Severity (mild, moderate, severe)
+    - Related symptoms
+    
+  Output format:
+    JSON with: reply, collectedData, nextField, conversationComplete
+    
+  Conversation tone:
+    - Warm, professional, empathetic
+    - Natural conversational style (not robotic)
+    - Acknowledge what the patient says before asking next question
+
+REPORT GENERATION PROMPT (report.prompt.ts):
+  Role: Medical report generator
+  
+  Key instructions:
+    - "Generate a structured health screening summary"
+    - "This should read like something a doctor could glance at"
+    - "Synthesize the conversation, don't just echo it"
+    - "Include recommendations for follow-up"
+    - "Mark completeness based on available information"
+    - "If conversation was cut short, note what's missing"
+    - "Always include a disclaimer that this is not a diagnosis"
+    
+  Output format:
+    JSON matching HealthReport schema
+
+================================================================================
+12. ERROR HANDLING STRATEGY
+================================================================================
+
+ERROR TYPE                  │ HANDLING
+────────────────────────────┼────────────────────────────────────────
+Empty STT result            │ Send "I couldn't understand, please repeat"
+STT API failure             │ Log error, send user-friendly retry message
+LLM API failure             │ Log error, send "sorry, please try again"
+LLM malformed JSON          │ Try to extract reply text, skip data update
+TTS API failure             │ Return text-only response (no audio)
+MongoDB failure             │ Log error, return 500 with generic message
+WebSocket disconnect        │ Auto-end call, generate partial report
+Invalid WS message          │ Send error message, don't crash connection
+Invalid call ID             │ Return 400/404 with clear message
+User ends call early        │ Generate partial report, mark as 'partial'
+API timeout                 │ Log timeout, send retry message
+Unknown error               │ Log full details, send generic error to client
+
+LOGGING:
+  - All errors logged with full details via Winston
+  - Stack traces in development only
+  - No API keys or sensitive data in logs
+  - Structured JSON logging in production
+
+CLIENT-FACING ERRORS:
+  - Always user-friendly language
+  - Never expose internal details
+  - Never show stack traces
+  - Never show API keys or config
+
+================================================================================
+13. ENVIRONMENT VARIABLES
+================================================================================
+
+VARIABLE          │ REQUIRED │ DEFAULT                                    │ DESCRIPTION
+──────────────────┼──────────┼────────────────────────────────────────────┼──────────────────────
+PORT              │ No       │ 3001                                      │ Server listen port
+MONGODB_URI       │ No       │ mongodb://localhost:27017/health-screening │ MongoDB connection
+OPENAI_API_KEY    │ Yes*     │ —                                         │ OpenAI API key
+GROQ_API_KEY      │ Yes**    │ —                                         │ Groq API key (for Groq STT)
+STT_PROVIDER      │ No       │ openai                                    │ STT: 'openai', 'groq', or 'mock'
+LLM_PROVIDER      │ No       │ openai                                    │ LLM: 'openai' or 'mock'
+TTS_PROVIDER      │ No       │ openai                                    │ TTS: 'openai' or 'mock'
+LLM_MODEL         │ No       │ gpt-4o-mini                               │ OpenAI LLM model name
+TTS_MODEL         │ No       │ tts-1                                     │ OpenAI TTS model name
+TTS_VOICE         │ No       │ alloy                                     │ TTS voice option
+NODE_ENV          │ No       │ development                               │ Environment mode
+LOG_LEVEL         │ No       │ info                                      │ Winston log level
+CORS_ORIGIN       │ No       │ http://localhost:3000                     │ Allowed CORS origin
+
+* OPENAI_API_KEY required only when using 'openai' providers. Not needed with 'mock' or 'groq'.
+** GROQ_API_KEY required only when using 'groq' STT provider. Not needed with 'openai' or 'mock'.
+
+================================================================================
+14. SECURITY CONSIDERATIONS
+================================================================================
+
+  - API keys stored in .env, NEVER in source code
+  - .env file in .gitignore
+  - .env.example provided without real values
+  - No sensitive health data stored beyond screening scope
+  - Error responses sanitized (no stack traces, no keys)
+  - CORS configured to restrict origins
+  - WebSocket callId validated before connection
+  - Input validation on all REST endpoints
+  - MongoDB injection prevention via Mongoose schemas
+
+================================================================================
+15. TESTING STRATEGY
+================================================================================
+
+  With Mock Providers (no API keys needed):
+    1. Set STT_PROVIDER=mock, LLM_PROVIDER=mock, TTS_PROVIDER=mock
+    2. Start server → verify it starts without errors
+    3. POST /api/calls → verify call created
+    4. Connect WebSocket → verify greeting received
+    5. Send audio.start → audio.chunk → audio.end
+    6. Verify transcript + ai.response received
+    7. Send multiple turns → verify context maintained
+    8. Send call.end → verify report generated
+    9. GET /api/calls/:callId/report → verify report structure
+    10. Test invalid callId → verify 404
+    11. Test invalid WS messages → verify error handling
+    12. Test disconnect → verify partial report
+
+  With Real Providers (API keys required):
+    1. Set OPENAI_API_KEY in .env
+    2. Record real audio and test full pipeline
+    3. Verify Whisper transcription accuracy
+    4. Verify LLM conversation quality
+    5. Verify TTS audio output
+
+================================================================================
+16. DEVELOPMENT COMMANDS
+================================================================================
+
+  # Install dependencies
+  cd server
+  npm install
+
+  # Create .env from template
+  cp .env.example .env
+  # Edit .env with your API keys
+
+  # Start development server (with hot reload)
+  npm run dev
+
+  # TypeScript compile check
+  npm run build
+
+  # Start production server
+  npm start
+
+  # Type check only (no emit)
+  npm run typecheck
+
+================================================================================
+17. IMPLEMENTATION PROGRESS TRACKER
+================================================================================
+
+  [ ] Project initialization (package.json, tsconfig.json)
+  [ ] Environment configuration (config/)
+  [ ] Database connection (database.ts)
+  [ ] Mongoose models (Call, Message, HealthReport)
+  [ ] Logger utility (utils/logger.ts)
+  [ ] STT service (interface + OpenAI + Mock)
+  [ ] LLM service (interface + OpenAI + Mock)
+  [ ] TTS service (interface + OpenAI + Mock)
+  [ ] Conversation service
+  [ ] Call service
+  [ ] Report service
+  [ ] AI pipeline service
+  [ ] Conversation prompt
+  [ ] Report prompt
+  [ ] WebSocket types
+  [ ] WebSocket handler
+  [ ] REST controllers (call, report)
+  [ ] REST routes
+  [ ] Validation middleware
+  [ ] Error middleware
+  [ ] Express app setup
+  [ ] Server entry point
+  [ ] .env.example
+  [ ] .gitignore
+  [ ] TypeScript compilation passes
+  [ ] Server starts successfully
+  [ ] REST endpoints respond
+  [ ] WebSocket connects and works
+  [ ] Mock providers tested end-to-end
+
+================================================================================
+18. FUTURE ENHANCEMENTS / NICE-TO-HAVES
+================================================================================
+
+  From PDF assessment (optional):
+    - Auto language detection/switching (Hindi ↔ English)
+    - Barge-in handling (user speaks while AI is talking)
+    - Graceful handling of silence / background noise
+
+  Additional improvements with more time:
+    - Rate limiting on API endpoints
+    - WebSocket authentication (JWT tokens)
+    - Call recording / audio archiving
+    - Multiple language support beyond English/Hindi
+    - Streaming TTS (start playing before full audio ready)
+    - WebRTC for lower latency audio
+    - Admin dashboard endpoints
+    - Call analytics / metrics
+    - Automated testing suite (Jest)
+    - Docker containerization
+    - CI/CD pipeline
+
+================================================================================
+19. KNOWN LIMITATIONS
+================================================================================
+
+  - Push-to-talk only (not full-duplex real-time)
+  - Single language per call (no mid-call switching in v1)
+  - Audio is base64 encoded in JSON (larger payload than binary)
+  - No audio streaming (full turn must complete before response)
+  - No user authentication (calls are anonymous)
+  - No persistent user profiles
+  - Mock providers give scripted responses (not intelligent)
+  - Report quality depends on LLM capability
+  - No caching of LLM responses
+
+================================================================================
+20. SUBMISSION CHECKLIST
+================================================================================
+
+  [ ] GitHub repository is PUBLIC
+  [ ] README with setup instructions
+  [ ] .env.example with all required variables
+  [ ] API keys NOT committed
+  [ ] Server starts and runs
+  [ ] Voice conversation works end-to-end
+  [ ] Report generates after call ends
+  [ ] Code is clean and well-structured
+  [ ] Error handling works
+  [ ] Incomplete call handling works
+
+================================================================================
+                         END OF PROJECT TRACKING REPORT
+================================================================================

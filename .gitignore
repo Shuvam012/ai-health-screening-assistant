@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+build/
+server/dist/
+Frontend/dist/
+
+# Env & credentials
+.env
+.env*.local
+
+# Logs and temp files
+*.log
+logs/
+*.wav
+temp_audio.wav
+server/temp_audio.wav
+server/scratch/temp_audio.wav
+server/scratch/test_stt.js
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
